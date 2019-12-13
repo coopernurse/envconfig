@@ -15,7 +15,14 @@ import (
 	"text/tabwriter"
 )
 
-var testUsageTableResult, testUsageListResult, testUsageCustomResult, testUsageBadFormatResult string
+//nolint:gochecknoglobals
+var (
+	testUsageTableResult     string
+	testUsageListResult      string
+	testUsageCustomResult    string
+	testUsageBadFormatResult string
+	testUsageX               string
+)
 
 func TestMain(m *testing.M) {
 
@@ -43,6 +50,12 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 	testUsageBadFormatResult = string(data)
+
+	data, err = ioutil.ReadFile("testdata/usagex.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	testUsageX = string(data)
 
 	retCode := m.Run()
 	os.Exit(retCode)
@@ -80,7 +93,10 @@ func TestUsageDefault(t *testing.T) {
 	// copy the output in a separate goroutine so printing can't block indefinitely
 	go func() {
 		var buf bytes.Buffer
-		io.Copy(&buf, r)
+		_, err := io.Copy(&buf, r)
+		if err != nil {
+			log.Println("failed to copy buffer: ", err)
+		}
 		outC <- buf.String()
 	}()
 	w.Close()
@@ -137,7 +153,7 @@ func TestUsageUnknownKeyFormat(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected 'unknown key' error, but got no error")
 	}
-	if strings.Index(err.Error(), unknownError) == -1 {
+	if !strings.Contains(err.Error(), unknownError) {
 		t.Errorf("expected '%s', but got '%s'", unknownError, err.Error())
 	}
 }
@@ -152,4 +168,32 @@ func TestUsageBadFormat(t *testing.T) {
 		t.Error(err.Error())
 	}
 	compareUsage(testUsageBadFormatResult, buf.String(), t)
+}
+
+func TestUsageX(t *testing.T) {
+	var s Specification
+	os.Clearenv()
+	save := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	err := UsageX(&s, Options{Prefix: "env_config", SplitWords: true})
+	outC := make(chan string)
+	// copy the output in a separate goroutine so printing can't block indefinitely
+	go func() {
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, r)
+		if err != nil {
+			log.Println("failed to copy buffer: ", err)
+		}
+		outC <- buf.String()
+	}()
+	w.Close()
+	os.Stdout = save // restoring the real stdout
+	out := <-outC
+
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	compareUsage(testUsageX, out, t)
 }

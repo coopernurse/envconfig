@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -33,6 +32,7 @@ func (cu *CustomURL) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+//nolint:maligned
 type Specification struct {
 	Embedded                     `desc:"can we document a struct"`
 	EmbeddedButIgnored           `ignored:"true"`
@@ -42,14 +42,11 @@ type Specification struct {
 	User                         string
 	TTL                          uint32
 	Timeout                      time.Duration
-	AdminUsers                   []string
+	AdminUsers                   []string `split_words:"false"`
 	MagicNumbers                 []int
-	EmptyNumbers                 []int
-	ByteSlice                    []byte
 	ColorCodes                   map[string]int
 	MultiWordVar                 string
 	MultiWordVarWithAutoSplit    uint32 `split_words:"true"`
-	MultiWordACRWithAutoSplit    uint32 `split_words:"true"`
 	SomePointer                  *string
 	SomePointerWithDefault       *string `default:"foo2baz" desc:"foorbar is the word"`
 	MultiWordVarWithAlt          string  `envconfig:"MULTI_WORD_VAR_WITH_ALT" desc:"what alt"`
@@ -68,8 +65,9 @@ type Specification struct {
 	DecodeStruct HonorDecodeInStruct `envconfig:"honor"`
 	Datetime     time.Time
 	MapField     map[string]string `default:"one:two,three:four"`
-	UrlValue     CustomURL
-	UrlPointer   *CustomURL
+	URLValue     CustomURL
+	URLPointer   *CustomURL
+	ACRONYMTest  string `split_words:"true"`
 }
 
 type Embedded struct {
@@ -86,6 +84,7 @@ type EmbeddedButIgnored struct {
 	SecondEmbeddedButIgnored string
 }
 
+//nolint:gocyclo
 func TestProcess(t *testing.T) {
 	var s Specification
 	os.Clearenv()
@@ -96,8 +95,6 @@ func TestProcess(t *testing.T) {
 	os.Setenv("ENV_CONFIG_TIMEOUT", "2m")
 	os.Setenv("ENV_CONFIG_ADMINUSERS", "John,Adam,Will")
 	os.Setenv("ENV_CONFIG_MAGICNUMBERS", "5,10,20")
-	os.Setenv("ENV_CONFIG_EMPTYNUMBERS", "")
-	os.Setenv("ENV_CONFIG_BYTESLICE", "this is a test value")
 	os.Setenv("ENV_CONFIG_COLORCODES", "red:1,green:2,blue:3")
 	os.Setenv("SERVICE_HOST", "127.0.0.1")
 	os.Setenv("ENV_CONFIG_TTL", "30")
@@ -108,9 +105,10 @@ func TestProcess(t *testing.T) {
 	os.Setenv("ENV_CONFIG_HONOR", "honor")
 	os.Setenv("ENV_CONFIG_DATETIME", "2016-08-16T18:57:05Z")
 	os.Setenv("ENV_CONFIG_MULTI_WORD_VAR_WITH_AUTO_SPLIT", "24")
-	os.Setenv("ENV_CONFIG_MULTI_WORD_ACR_WITH_AUTO_SPLIT", "25")
 	os.Setenv("ENV_CONFIG_URLVALUE", "https://github.com/kelseyhightower/envconfig")
 	os.Setenv("ENV_CONFIG_URLPOINTER", "https://github.com/kelseyhightower/envconfig")
+	os.Setenv("ENV_CONFIG_ACRONYM_TEST", "acronym")
+
 	err := Process("env_config", &s)
 	if err != nil {
 		t.Error(err.Error())
@@ -136,6 +134,7 @@ func TestProcess(t *testing.T) {
 	if s.Timeout != 2*time.Minute {
 		t.Errorf("expected %s, got %s", 2*time.Minute, s.Timeout)
 	}
+	//nolint:goconst
 	if s.RequiredVar != "foo" {
 		t.Errorf("expected %s, got %s", "foo", s.RequiredVar)
 	}
@@ -150,13 +149,6 @@ func TestProcess(t *testing.T) {
 		s.MagicNumbers[1] != 10 ||
 		s.MagicNumbers[2] != 20 {
 		t.Errorf("expected %#v, got %#v", []int{5, 10, 20}, s.MagicNumbers)
-	}
-	if len(s.EmptyNumbers) != 0 {
-		t.Errorf("expected %#v, got %#v", []int{}, s.EmptyNumbers)
-	}
-	expected := "this is a test value"
-	if string(s.ByteSlice) != expected {
-		t.Errorf("expected %v, got %v", expected, string(s.ByteSlice))
 	}
 	if s.Ignored != "" {
 		t.Errorf("expected empty string, got %#v", s.Ignored)
@@ -201,21 +193,21 @@ func TestProcess(t *testing.T) {
 		t.Errorf("expected %q, got %q", 24, s.MultiWordVarWithAutoSplit)
 	}
 
-	if s.MultiWordACRWithAutoSplit != 25 {
-		t.Errorf("expected %d, got %d", 25, s.MultiWordACRWithAutoSplit)
-	}
-
 	u, err := url.Parse("https://github.com/kelseyhightower/envconfig")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if *s.UrlValue.Value != *u {
-		t.Errorf("expected %q, got %q", u, s.UrlValue.Value.String())
+	if *s.URLValue.Value != *u {
+		t.Errorf("expected %q, got %q", u, s.URLValue.Value.String())
 	}
 
-	if *s.UrlPointer.Value != *u {
-		t.Errorf("expected %q, got %q", u, s.UrlPointer.Value.String())
+	if *s.URLPointer.Value != *u {
+		t.Errorf("expected %q, got %q", u, s.URLPointer.Value.String())
+	}
+
+	if s.ACRONYMTest != "acronym" {
+		t.Errorf("expected %q, got %q", "acronym", s.ACRONYMTest)
 	}
 }
 
@@ -368,6 +360,7 @@ func TestRequiredVar(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	//nolint:goconst
 	if s.RequiredVar != "foobar" {
 		t.Errorf("expected %s, got %s", "foobar", s.RequiredVar)
 	}
@@ -742,8 +735,8 @@ func TestBinaryUnmarshalerError(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ParseError, got %T %v", err, err)
 	}
-	if v.FieldName != "UrlPointer" {
-		t.Errorf("expected %s, got %v", "UrlPointer", v.FieldName)
+	if v.FieldName != "URLPointer" {
+		t.Errorf("expected %s, got %v", "URLPointer", v.FieldName)
 	}
 
 	// To be compatible with go 1.5 and lower we should do a very basic check,
@@ -792,20 +785,69 @@ func TestCheckDisallowedIgnored(t *testing.T) {
 	}
 }
 
-func TestErrorMessageForRequiredAltVar(t *testing.T) {
-	var s struct {
-		Foo    string `envconfig:"BAR" required:"true"`
+func TestSeveralRequiredFields(t *testing.T) {
+	type RequiredFields struct {
+		Required1 string `required:"true"`
+		Required2 string `required:"true"`
 	}
+
+	var s RequiredFields
+	os.Clearenv()
+
+	err := Process("", &s)
+	if err == nil {
+		t.Fatal("no failure when missing required variable")
+	}
+
+	const expected = `required key REQUIRED1 missing value
+required key REQUIRED2 missing value
+`
+
+	if err.Error() != expected {
+		t.Errorf(`expected error "%s" got "%s"`, expected, err.Error())
+	}
+}
+
+func TestProcessX(t *testing.T) {
+	type SomeStruct struct {
+		SplitIt      string
+		SplitItToo   string
+		SplitItAgain string
+		DontSplit    string `split_words:"false"`
+	}
+
+	const (
+		value1 = "value1"
+		value2 = "value2"
+		value3 = "value3"
+		value4 = "value4"
+	)
 
 	os.Clearenv()
-	err := Process("env_config", &s)
+	os.Setenv("SPLIT_IT", value1)
+	os.Setenv("SPLIT_IT_TOO", value2)
+	os.Setenv("SPLIT_IT_AGAIN", value3)
+	os.Setenv("DONTSPLIT", value4)
 
-	if err == nil {
-		t.Error("no failure when missing required variable")
+	var s SomeStruct
+	if err := ProcessX(&s, Options{SplitWords: true}); err != nil {
+		t.Fatalf("failed to process with options: %s", err)
 	}
 
-	if !strings.Contains(err.Error(), " BAR ") {
-		t.Errorf("expected error message to contain BAR, got \"%v\"", err)
+	if s.SplitIt != value1 {
+		t.Errorf("expected: %s got %s", value1, s.SplitIt)
+	}
+
+	if s.SplitItToo != value2 {
+		t.Errorf("expected: %s got %s", value2, s.SplitItToo)
+	}
+
+	if s.SplitItAgain != value3 {
+		t.Errorf("expected: %s got %s", value3, s.SplitItAgain)
+	}
+
+	if s.DontSplit != value4 {
+		t.Errorf("expected: %s got %s", value4, s.DontSplit)
 	}
 }
 
@@ -859,6 +901,6 @@ func BenchmarkGatherInfo(b *testing.B) {
 	os.Setenv("ENV_CONFIG_MULTI_WORD_VAR_WITH_AUTO_SPLIT", "24")
 	for i := 0; i < b.N; i++ {
 		var s Specification
-		gatherInfo("env_config", &s)
+		_, _ = gatherInfo(&s, Options{Prefix: "env_config"})
 	}
 }

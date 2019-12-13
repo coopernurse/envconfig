@@ -19,8 +19,17 @@ import (
 // ErrInvalidSpecification indicates that a specification is of the wrong type.
 var ErrInvalidSpecification = errors.New("specification must be a struct pointer")
 
-var gatherRegexp = regexp.MustCompile("([^A-Z]+|[A-Z]+[^A-Z]+|[A-Z]+)")
-var acronymRegexp = regexp.MustCompile("([A-Z]+)([A-Z][^A-Z]+)")
+//nolint:gochecknoglobals
+var (
+	gatherRegexp  = regexp.MustCompile("([^A-Z]+|[A-Z]+[^A-Z]+|[A-Z]+)")
+	acronymRegexp = regexp.MustCompile("([A-Z]+)([A-Z][^A-Z]+)")
+)
+
+// Options is used with ProcessX() when you want to pass custom parameters
+type Options struct {
+	Prefix     string // sets prefix for env vars
+	SplitWords bool   // use split_words = true by default
+}
 
 // A ParseError occurs when an environment variable cannot be converted to
 // the type required by a struct field during assignment.
@@ -45,7 +54,10 @@ type Setter interface {
 }
 
 func (e *ParseError) Error() string {
-	return fmt.Sprintf("envconfig.Process: assigning %[1]s to %[2]s: converting '%[3]s' to type %[4]s. details: %[5]s", e.KeyName, e.FieldName, e.Value, e.TypeName, e.Err)
+	return fmt.Sprintf(
+		"envconfig.Process: assigning %[1]s to %[2]s: converting '%[3]s' to type %[4]s. details: %[5]s",
+		e.KeyName, e.FieldName, e.Value, e.TypeName, e.Err,
+	)
 }
 
 // varInfo maintains information about the configuration variable
@@ -58,7 +70,7 @@ type varInfo struct {
 }
 
 // GatherInfo gathers information about the specified struct
-func gatherInfo(prefix string, spec interface{}) ([]varInfo, error) {
+func gatherInfo(spec interface{}, options Options) ([]varInfo, error) {
 	s := reflect.ValueOf(spec)
 
 	if s.Kind() != reflect.Ptr {
@@ -103,16 +115,18 @@ func gatherInfo(prefix string, spec interface{}) ([]varInfo, error) {
 		info.Key = info.Name
 
 		// Best effort to un-pick camel casing as separate words
-		if isTrue(ftype.Tag.Get("split_words")) {
+		splitWords := ftype.Tag.Get("split_words")
+		if isTrue(splitWords) || (options.SplitWords && splitWords != "false") {
 			words := gatherRegexp.FindAllStringSubmatch(ftype.Name, -1)
 			if len(words) > 0 {
 				var name []string
 				for _, words := range words {
-					if m := acronymRegexp.FindStringSubmatch(words[0]); len(m) == 3 {
-						name = append(name, m[1], m[2])
-					} else {
-						name = append(name, words[0])
+					acronym := acronymRegexp.FindStringSubmatch(words[0])
+					if len(acronym) == 3 {
+						name = append(name, acronym[1], acronym[2])
+						continue
 					}
+					name = append(name, words[0])
 				}
 
 				info.Key = strings.Join(name, "_")
@@ -121,8 +135,8 @@ func gatherInfo(prefix string, spec interface{}) ([]varInfo, error) {
 		if info.Alt != "" {
 			info.Key = info.Alt
 		}
-		if prefix != "" {
-			info.Key = fmt.Sprintf("%s_%s", prefix, info.Key)
+		if options.Prefix != "" {
+			info.Key = fmt.Sprintf("%s_%s", options.Prefix, info.Key)
 		}
 		info.Key = strings.ToUpper(info.Key)
 		infos = append(infos, info)
@@ -130,13 +144,16 @@ func gatherInfo(prefix string, spec interface{}) ([]varInfo, error) {
 		if f.Kind() == reflect.Struct {
 			// honor Decode if present
 			if decoderFrom(f) == nil && setterFrom(f) == nil && textUnmarshaler(f) == nil && binaryUnmarshaler(f) == nil {
-				innerPrefix := prefix
+				innerPrefix := options.Prefix
 				if !ftype.Anonymous {
 					innerPrefix = info.Key
 				}
 
 				embeddedPtr := f.Addr().Interface()
-				embeddedInfos, err := gatherInfo(innerPrefix, embeddedPtr)
+				embeddedInfos, err := gatherInfo(embeddedPtr, Options{
+					Prefix:     innerPrefix,
+					SplitWords: options.SplitWords,
+				})
 				if err != nil {
 					return nil, err
 				}
@@ -153,7 +170,7 @@ func gatherInfo(prefix string, spec interface{}) ([]varInfo, error) {
 // that we don't know how or want to parse. This is likely only meaningful with
 // a non-empty prefix.
 func CheckDisallowed(prefix string, spec interface{}) error {
-	infos, err := gatherInfo(prefix, spec)
+	infos, err := gatherInfo(spec, Options{Prefix: prefix})
 	if err != nil {
 		return err
 	}
@@ -182,7 +199,18 @@ func CheckDisallowed(prefix string, spec interface{}) error {
 
 // Process populates the specified struct based on environment variables
 func Process(prefix string, spec interface{}) error {
-	infos, err := gatherInfo(prefix, spec)
+	return ProcessX(spec, Options{Prefix: prefix})
+}
+
+// ProcessX populates the specified struct based on environment variables.
+// This func uses the Options values to configure how the struct is processed
+func ProcessX(spec interface{}, options Options) error {
+	infos, err := gatherInfo(spec, options)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
 
 	for _, info := range infos {
 
@@ -203,17 +231,12 @@ func Process(prefix string, spec interface{}) error {
 		req := info.Tags.Get("required")
 		if !ok && def == "" {
 			if isTrue(req) {
-				key := info.Key
-				if info.Alt != "" {
-					key = info.Alt
-				}
-				return fmt.Errorf("required key %s missing value", key)
+				errs = append(errs, fmt.Errorf("required key %s missing value", info.Key))
 			}
 			continue
 		}
 
-		err = processField(value, info.Field)
-		if err != nil {
+		if err := processField(value, info.Field); err != nil {
 			return &ParseError{
 				KeyName:   info.Key,
 				FieldName: info.Name,
@@ -224,7 +247,7 @@ func Process(prefix string, spec interface{}) error {
 		}
 	}
 
-	return err
+	return errorsJoin(errs)
 }
 
 // MustProcess is the same as Process but panics if an error occurs
@@ -302,17 +325,12 @@ func processField(value string, field reflect.Value) error {
 		}
 		field.SetFloat(val)
 	case reflect.Slice:
-		sl := reflect.MakeSlice(typ, 0, 0)
-		if typ.Elem().Kind() == reflect.Uint8 {
-			sl = reflect.ValueOf([]byte(value))
-		} else if len(strings.TrimSpace(value)) != 0 {
-			vals := strings.Split(value, ",")
-			sl = reflect.MakeSlice(typ, len(vals), len(vals))
-			for i, val := range vals {
-				err := processField(val, sl.Index(i))
-				if err != nil {
-					return err
-				}
+		vals := strings.Split(value, ",")
+		sl := reflect.MakeSlice(typ, len(vals), len(vals))
+		for i, val := range vals {
+			err := processField(val, sl.Index(i))
+			if err != nil {
+				return err
 			}
 		}
 		field.Set(sl)
@@ -379,4 +397,19 @@ func binaryUnmarshaler(field reflect.Value) (b encoding.BinaryUnmarshaler) {
 func isTrue(s string) bool {
 	b, _ := strconv.ParseBool(s)
 	return b
+}
+
+func errorsJoin(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+
+	var errMsg string
+	for _, err := range errs {
+		if err != nil {
+			errMsg += err.Error() + "\n"
+		}
+	}
+
+	return errors.New(errMsg)
 }

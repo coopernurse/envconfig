@@ -10,8 +10,8 @@ import (
 )
 
 type SpecWithURL struct {
-	UrlValue   url.URL
-	UrlPointer *url.URL
+	URLValue   url.URL
+	URLPointer *url.URL
 }
 
 func TestParseURL(t *testing.T) {
@@ -31,12 +31,12 @@ func TestParseURL(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if s.UrlValue != *u {
-		t.Errorf("expected %q, got %q", u, s.UrlValue.String())
+	if s.URLValue != *u {
+		t.Errorf("expected %q, got %q", u, s.URLValue.String())
 	}
 
-	if *s.UrlPointer != *u {
-		t.Errorf("expected %q, got %q", u, s.UrlPointer)
+	if *s.URLPointer != *u {
+		t.Errorf("expected %q, got %q", u, s.URLPointer)
 	}
 }
 
@@ -52,8 +52,8 @@ func TestParseURLError(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ParseError, got %T %v", err, err)
 	}
-	if v.FieldName != "UrlPointer" {
-		t.Errorf("expected %s, got %v", "UrlPointer", v.FieldName)
+	if v.FieldName != "URLPointer" {
+		t.Errorf("expected %s, got %v", "URLPointer", v.FieldName)
 	}
 
 	expectedUnerlyingError := url.Error{

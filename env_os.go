@@ -4,4 +4,5 @@ package envconfig
 
 import "os"
 
+//nolint:gochecknoglobals
 var lookupEnv = os.LookupEnv

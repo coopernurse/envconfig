@@ -4,4 +4,5 @@ package envconfig
 
 import "syscall"
 
+//nolint:gochecknoglobals
 var lookupEnv = syscall.Getenv

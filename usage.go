@@ -36,12 +36,21 @@ KEY	TYPE	DEFAULT	REQUIRED	DESCRIPTION
 {{end}}`
 )
 
+//nolint:gochecknoglobals
 var (
 	decoderType           = reflect.TypeOf((*Decoder)(nil)).Elem()
 	setterType            = reflect.TypeOf((*Setter)(nil)).Elem()
 	textUnmarshalerType   = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 	binaryUnmarshalerType = reflect.TypeOf((*encoding.BinaryUnmarshaler)(nil)).Elem()
 )
+
+type UsageOptions struct {
+	Prefix     string
+	SplitWords bool
+	Out        io.Writer
+	Format     string
+	Template   *template.Template
+}
 
 func implementsInterface(t reflect.Type) bool {
 	return t.Implements(decoderType) ||
@@ -58,9 +67,6 @@ func implementsInterface(t reflect.Type) bool {
 func toTypeDescription(t reflect.Type) string {
 	switch t.Kind() {
 	case reflect.Array, reflect.Slice:
-		if t.Elem().Kind() == reflect.Uint8 {
-			return "String"
-		}
 		return fmt.Sprintf("Comma-separated list of %s", toTypeDescription(t.Elem()))
 	case reflect.Map:
 		return fmt.Sprintf(
@@ -109,20 +115,51 @@ func toTypeDescription(t reflect.Type) string {
 	return fmt.Sprintf("%+v", t)
 }
 
-// Usage writes usage information to stdout using the default header and table format
+// Usage writes usage information to stderr using the default header and table format
 func Usage(prefix string, spec interface{}) error {
+	return UsageX(spec, Options{Prefix: prefix})
+}
+
+// Usagef writes usage information to the specified io.Writer using the specified template specification
+func Usagef(prefix string, spec interface{}, out io.Writer, format string) error {
+	usageOptions := UsageOptions{
+		Prefix: prefix,
+		Out:    out,
+		Format: format,
+	}
+
+	return UsagefX(spec, usageOptions)
+}
+
+// Usaget writes usage information to the specified io.Writer using the specified template
+func Usaget(prefix string, spec interface{}, out io.Writer, tmpl *template.Template) error {
+	usageOptions := UsageOptions{
+		Prefix:   prefix,
+		Out:      out,
+		Template: tmpl,
+	}
+
+	return UsagetX(spec, usageOptions)
+}
+
+func UsageX(spec interface{}, options Options) error {
 	// The default is to output the usage information as a table
 	// Create tabwriter instance to support table output
 	tabs := tabwriter.NewWriter(os.Stdout, 1, 0, 4, ' ', 0)
 
-	err := Usagef(prefix, spec, tabs, DefaultTableFormat)
+	usageOptions := UsageOptions{
+		Prefix:     options.Prefix,
+		SplitWords: options.SplitWords,
+		Out:        tabs,
+		Format:     DefaultTableFormat,
+	}
+
+	err := UsagefX(spec, usageOptions)
 	tabs.Flush()
 	return err
 }
 
-// Usagef writes usage information to the specified io.Writer using the specifed template specification
-func Usagef(prefix string, spec interface{}, out io.Writer, format string) error {
-
+func UsagefX(spec interface{}, usageOptions UsageOptions) error {
 	// Specify the default usage template functions
 	functions := template.FuncMap{
 		"usage_key":         func(v varInfo) string { return v.Key },
@@ -144,21 +181,28 @@ func Usagef(prefix string, spec interface{}, out io.Writer, format string) error
 		},
 	}
 
-	tmpl, err := template.New("envconfig").Funcs(functions).Parse(format)
-	if err != nil {
-		return err
+	if usageOptions.Template == nil {
+		tmpl, err := template.New("envconfig").Funcs(functions).Parse(usageOptions.Format)
+		if err != nil {
+			return err
+		}
+
+		usageOptions.Template = tmpl
 	}
 
-	return Usaget(prefix, spec, out, tmpl)
+	return UsagetX(spec, usageOptions)
 }
 
-// Usaget writes usage information to the specified io.Writer using the specified template
-func Usaget(prefix string, spec interface{}, out io.Writer, tmpl *template.Template) error {
-	// gather first
-	infos, err := gatherInfo(prefix, spec)
+func UsagetX(spec interface{}, usageOptions UsageOptions) error {
+	options := Options{
+		Prefix:     usageOptions.Prefix,
+		SplitWords: usageOptions.SplitWords,
+	}
+
+	infos, err := gatherInfo(spec, options)
 	if err != nil {
 		return err
 	}
 
-	return tmpl.Execute(out, infos)
+	return usageOptions.Template.Execute(usageOptions.Out, infos)
 }

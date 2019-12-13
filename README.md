@@ -1,14 +1,19 @@
-# envconfig
+# envconfig (Fork of https://github.com/kelseyhightower/envconfig)
 
-[![Build Status](https://travis-ci.org/kelseyhightower/envconfig.svg)](https://travis-ci.org/kelseyhightower/envconfig)
+[![Build Status](https://travis-ci.org/ndrewnee/envconfig.svg)](https://travis-ci.org/ndrewnee/envconfig)
+[![Coverage Status](https://coveralls.io/repos/github/ndrewnee/envconfig/badge.svg)](https://coveralls.io/github/ndrewnee/envconfig)
+
+## Description
+
+It seems that the [original](https://github.com/kelseyhightower/envconfig) is no longer supported so I've decided to make fork of it
 
 ```Go
-import "github.com/kelseyhightower/envconfig"
+import "github.com/ndrewnee/envconfig"
 ```
 
 ## Documentation
 
-See [godoc](http://godoc.org/github.com/kelseyhightower/envconfig)
+See [godoc](http://godoc.org/github.com/ndrewnee/envconfig)
 
 ## Usage
 
@@ -34,7 +39,7 @@ import (
     "log"
     "time"
 
-    "github.com/kelseyhightower/envconfig"
+    "github.com/ndrewnee/envconfig"
 )
 
 type Specification struct {
@@ -89,6 +94,58 @@ Color codes:
   blue: 3
 ```
 
+## Process with Options
+
+Set some environment variables:
+
+```Bash
+export SPLITTED_COLOR_CODES="red:1,green:2,blue:3"
+export SPLITTED_ANOTHER_FIELD="value"
+```
+
+Write some code:
+
+```Go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/ndrewnee/envconfig"
+)
+
+type Specification struct {
+    ColorCodes   map[string]int
+    AnotherField string
+}
+
+func main() {
+    var s Specification
+    err := envconfig.ProcessX(&s, envconfig.Options{Prefix: "splitted", SplitWords: true})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("Color codes:")
+    for k, v := range s.ColorCodes {
+        fmt.Printf("  %s: %d\n", k, v)
+    }
+
+    fmt.Printf("Another Field: %s", s.AnotherField)
+}
+```
+
+Results:
+
+```Bash
+Color codes:
+  red: 1
+  green: 2
+  blue: 3
+Another Field: value
+```
+
 ## Struct Tag Support
 
 Envconfig supports the use of struct tags to specify alternate, default, and required
@@ -103,7 +160,6 @@ type Specification struct {
     RequiredVar     string `required:"true"`
     IgnoredVar      string `ignored:"true"`
     AutoSplitVar    string `split_words:"true"`
-    RequiredAndAutoSplitVar    string `required:"true" split_words:"true"`
 }
 ```
 
@@ -129,8 +185,7 @@ If envconfig can't find an environment variable value for `MYAPP_DEFAULTVAR`,
 it will populate it with "foobar" as a default value.
 
 If envconfig can't find an environment variable value for `MYAPP_REQUIREDVAR`,
-it will return an error when asked to process the struct.  If
-`MYAPP_REQUIREDVAR` is present but empty, envconfig will not return an error.
+it will return an error when asked to process the struct.
 
 If envconfig can't find an environment variable in the form `PREFIX_MYVAR`, and there
 is a struct tag defined, it will try to populate your variable with an environment
@@ -140,6 +195,7 @@ variable that directly matches the envconfig tag in your struct definition:
 export SERVICE_HOST=127.0.0.1
 export MYAPP_DEBUG=true
 ```
+
 ```Go
 type Specification struct {
     ServiceHost string `envconfig:"SERVICE_HOST"`
@@ -154,15 +210,14 @@ environment variable is set.
 
 envconfig supports these struct field types:
 
-  * string
-  * int8, int16, int32, int64
-  * bool
-  * float32, float64
-  * slices of any supported type
-  * maps (keys and values of any supported type)
-  * [encoding.TextUnmarshaler](https://golang.org/pkg/encoding/#TextUnmarshaler)
-  * [encoding.BinaryUnmarshaler](https://golang.org/pkg/encoding/#BinaryUnmarshaler)
-  * [time.Duration](https://golang.org/pkg/time/#Duration)
+- string
+- int8, int16, int32, int64
+- bool
+- float32, float64
+- slices of any supported type
+- maps (keys and values of any supported type)
+- [encoding.TextUnmarshaler](https://golang.org/pkg/encoding/#TextUnmarshaler)
+- [encoding.BinaryUnmarshaler](https://golang.org/pkg/encoding/#BinaryUnmarshaler)
 
 Embedded structs using these fields are also supported.
 
