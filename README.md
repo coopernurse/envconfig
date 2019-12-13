@@ -1,19 +1,19 @@
 # envconfig (Fork of https://github.com/kelseyhightower/envconfig)
 
-[![Build Status](https://travis-ci.org/ndrewnee/envconfig.svg)](https://travis-ci.org/ndrewnee/envconfig)
-[![Coverage Status](https://coveralls.io/repos/github/ndrewnee/envconfig/badge.svg)](https://coveralls.io/github/ndrewnee/envconfig)
-
 ## Description
 
-It seems that the [original](https://github.com/kelseyhightower/envconfig) is no longer supported so I've decided to make fork of it
+It seems that the [original](https://github.com/kelseyhightower/envconfig) is no longer supported, so I was using
+@ndrewnee's fork, but then that vanished one day.
+
+This repo has the sources I was using from that fork, with updated go.mod.
 
 ```Go
-import "github.com/ndrewnee/envconfig"
+import "github.com/coopernurse/envconfig"
 ```
 
 ## Documentation
 
-See [godoc](http://godoc.org/github.com/ndrewnee/envconfig)
+See [godoc](http://godoc.org/github.com/coopernurse/envconfig)
 
 ## Usage
 
@@ -39,7 +39,7 @@ import (
     "log"
     "time"
 
-    "github.com/ndrewnee/envconfig"
+    "github.com/coopernurse/envconfig"
 )
 
 type Specification struct {
@@ -112,7 +112,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/ndrewnee/envconfig"
+    "github.com/coopernurse/envconfig"
 )
 
 type Specification struct {

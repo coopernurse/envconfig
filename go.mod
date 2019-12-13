@@ -1,3 +1,3 @@
-module github.com/ndrewnee/envconfig
+module github.com/coopernurse/envconfig
 
 go 1.11
